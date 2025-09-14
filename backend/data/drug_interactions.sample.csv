@@ -1,0 +1,5 @@
+drug_a,drug_b,severity,description,mechanism,clinical_management,drugbank_id_a,drugbank_id_b,drug_a_aliases,drug_b_aliases
+Simvastatin,Amlodipine,moderate,"Amlodipine may increase simvastatin levels and risk of myopathy.","CYP3A4 inhibition",Monitor for muscle pain; consider lower simvastatin dose,,,"[\"simvastatin\", \"zocor\"]","[\"amlodipine\", \"norvasc\"]"
+Warfarin,Amoxicillin,moderate,"Increased bleeding risk when combined.","Altered gut flora/VK metabolism","Monitor INR closely; adjust warfarin dose if needed",,,,
+Paracetamol,Warfarin,minor,"Prolonged paracetamol use may increase INR.",,"Monitor INR if using regularly",,,"paracetamol;acetaminophen",
+Sertraline,Tramadol,major,"Risk of serotonin syndrome with combined use.","Additive serotonergic effects","Avoid if possible; monitor closely for symptoms",,,,
