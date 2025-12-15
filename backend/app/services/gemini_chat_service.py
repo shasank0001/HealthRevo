@@ -1,5 +1,8 @@
 from typing import Dict, List, Optional
-import google.generativeai as genai
+try:
+    import google.generativeai as genai
+except Exception:  # Module may not be installed; fallback mode will be used
+    genai = None
 from app.config import settings
 from app.models.patient import Patient
 from app.models.vitals import Vitals
@@ -17,7 +20,7 @@ class GeminiChatService:
         # Configure Gemini API if available
         self._use_gemini = False
         try:
-            if settings.google_gemini_api_key:
+            if settings.google_gemini_api_key and genai is not None:
                 genai.configure(api_key=settings.google_gemini_api_key)
                 self.model = genai.GenerativeModel(settings.gemini_model)
                 self._use_gemini = True
@@ -31,7 +34,8 @@ class GeminiChatService:
         patient: Patient,
         recent_vitals: List[Vitals] = None,
         recent_risk_scores: List[RiskScore] = None,
-        chat_history: List[Dict] = None
+        chat_history: List[Dict] = None,
+        patient_name: str | None = None,
     ) -> Dict[str, str]:
         """
         Generate AI response for patient question using Gemini.
@@ -50,7 +54,7 @@ class GeminiChatService:
         try:
             # Build context prompt with patient data
             system_prompt = self._build_system_prompt(
-                patient, recent_vitals, recent_risk_scores
+                patient, recent_vitals, recent_risk_scores, patient_name=patient_name
             )
             
             # Build conversation history
@@ -101,74 +105,81 @@ class GeminiChatService:
         self,
         patient: Patient,
         recent_vitals: List[Vitals] = None,
-        recent_risk_scores: List[RiskScore] = None
+        recent_risk_scores: List[RiskScore] = None,
+        patient_name: str | None = None,
     ) -> str:
         """Build system prompt with patient context."""
-        
         # Calculate patient age
         age = "unknown"
-        if patient.dob:
-            today = datetime.now().date()
-            age = str(today.year - patient.dob.year)
-        
+        if getattr(patient, "dob", None):
+            try:
+                today = datetime.now().date()
+                age = str(today.year - patient.dob.year)
+            except Exception:
+                pass
+
         # Format recent vitals summary
         vitals_summary = "No recent vitals data available."
         if recent_vitals:
-            latest_vital = recent_vitals[0]
-            vitals_parts = []
-            
-            if latest_vital.systolic and latest_vital.diastolic:
-                vitals_parts.append(f"Blood pressure: {latest_vital.systolic}/{latest_vital.diastolic} mmHg")
-            if latest_vital.heart_rate:
-                vitals_parts.append(f"Heart rate: {latest_vital.heart_rate} BPM")
-            if latest_vital.temperature:
-                vitals_parts.append(f"Temperature: {latest_vital.temperature}°C")
-            if latest_vital.blood_glucose:
-                vitals_parts.append(f"Blood glucose: {latest_vital.blood_glucose} mg/dL")
-            if latest_vital.oxygen_saturation:
-                vitals_parts.append(f"Oxygen saturation: {latest_vital.oxygen_saturation}%")
-            
-            if vitals_parts:
-                vitals_summary = f"Latest vitals: {', '.join(vitals_parts)}"
-        
+            try:
+                latest_vital = recent_vitals[0]
+                vitals_parts: List[str] = []
+                if getattr(latest_vital, "systolic", None) and getattr(latest_vital, "diastolic", None):
+                    vitals_parts.append(f"Blood pressure: {latest_vital.systolic}/{latest_vital.diastolic} mmHg")
+                if getattr(latest_vital, "heart_rate", None):
+                    vitals_parts.append(f"Heart rate: {latest_vital.heart_rate} BPM")
+                if getattr(latest_vital, "temperature", None):
+                    vitals_parts.append(f"Temperature: {latest_vital.temperature}°C")
+                if getattr(latest_vital, "blood_glucose", None):
+                    vitals_parts.append(f"Blood glucose: {latest_vital.blood_glucose} mg/dL")
+                if getattr(latest_vital, "oxygen_saturation", None):
+                    vitals_parts.append(f"Oxygen saturation: {latest_vital.oxygen_saturation}%")
+                if vitals_parts:
+                    vitals_summary = f"Latest vitals: {', '.join(vitals_parts)}"
+            except Exception:
+                pass
+
         # Format risk scores summary
         risk_summary = "No risk assessments available."
         if recent_risk_scores:
-            risk_parts = []
-            for risk in recent_risk_scores:
-                risk_parts.append(f"{risk.risk_type}: {risk.risk_level} risk (score: {risk.score})")
-            
-            if risk_parts:
-                risk_summary = f"Current risk assessments: {', '.join(risk_parts)}"
-        
-        system_prompt = f"""You are a helpful medical AI assistant for HealthRevo, designed to help patients understand their health data and provide general health guidance. 
+            try:
+                risk_parts: List[str] = []
+                for risk in recent_risk_scores:
+                    risk_type = getattr(risk, "risk_type", "Risk")
+                    risk_level = getattr(risk, "risk_level", "unknown")
+                    score = getattr(risk, "score", "?")
+                    risk_parts.append(f"{risk_type}: {risk_level} risk (score: {score})")
+                if risk_parts:
+                    risk_summary = f"Current risk assessments: {', '.join(risk_parts)}"
+            except Exception:
+                pass
 
-IMPORTANT GUIDELINES:
-- Always emphasize that you cannot replace professional medical advice
-- For urgent symptoms or emergencies, direct patients to seek immediate medical care
-- Provide educational information in simple, understandable language
-- Be supportive and encouraging while being factually accurate
-- If unsure about something, recommend consulting with their healthcare provider
+        name = patient_name or "Patient"
 
-PATIENT CONTEXT:
-- Name: {patient.user.full_name if patient.user else 'Patient'}
-- Age: {age} years
-- Gender: {patient.gender or 'Not specified'}
-- Blood group: {patient.blood_group or 'Not specified'}
-
-CURRENT HEALTH DATA:
-- {vitals_summary}
-- {risk_summary}
-
-When answering questions:
-1. Use the patient's health data to provide personalized context when relevant
-2. Explain medical terms in simple language
-3. Provide actionable, safe recommendations
-4. Always remind patients to consult their healthcare provider for medical decisions
-5. Be empathetic and supportive
-
-Remember: You are an educational assistant, not a replacement for medical professionals."""
-
+        system_prompt = (
+            "You are a helpful medical AI assistant for HealthRevo, designed to help patients understand their health data and provide general health guidance.\n\n"
+            "IMPORTANT GUIDELINES:\n"
+            "- Always emphasize that you cannot replace professional medical advice\n"
+            "- For urgent symptoms or emergencies, direct patients to seek immediate medical care\n"
+            "- Provide educational information in simple, understandable language\n"
+            "- Be supportive and encouraging while being factually accurate\n"
+            "- If unsure about something, recommend consulting with their healthcare provider\n\n"
+            "PATIENT CONTEXT:\n"
+            f"- Name: {name}\n"
+            f"- Age: {age} years\n"
+            f"- Gender: {getattr(patient, 'gender', None) or 'Not specified'}\n"
+            f"- Blood group: {getattr(patient, 'blood_group', None) or 'Not specified'}\n\n"
+            "CURRENT HEALTH DATA:\n"
+            f"- {vitals_summary}\n"
+            f"- {risk_summary}\n\n"
+            "When answering questions:\n"
+            "1. Use the patient's health data to provide personalized context when relevant\n"
+            "2. Explain medical terms in simple language\n"
+            "3. Provide actionable, safe recommendations\n"
+            "4. Always remind patients to consult their healthcare provider for medical decisions\n"
+            "5. Be empathetic and supportive\n\n"
+            "Remember: You are an educational assistant, not a replacement for medical professionals."
+        )
         return system_prompt
     
     def _build_conversation_context(
@@ -203,7 +214,8 @@ Remember: You are an educational assistant, not a replacement for medical profes
         self,
         patient: Patient,
         vitals_data: List[Vitals],
-        risk_scores: List[RiskScore]
+        risk_scores: List[RiskScore],
+        patient_name: str | None = None,
     ) -> str:
         """Generate a health summary for the patient using Gemini."""
         
@@ -211,7 +223,7 @@ Remember: You are an educational assistant, not a replacement for medical profes
             # Build summary prompt
             summary_prompt = f"""Generate a friendly, encouraging health summary for this patient based on their recent data:
 
-Patient: {patient.user.full_name if patient.user else 'Patient'}
+Patient: {patient_name or 'Patient'}
 Recent vitals count: {len(vitals_data)}
 Risk assessments: {len(risk_scores)}
 

@@ -100,7 +100,13 @@ async def chat_with_ai(
         )
 
         if not result["success"]:
-            raise ProcessingError(f"AI chat service error: {result.get('error', 'Unknown error')}")
+            # Gracefully return fallback response without 500
+            return ChatResponse(
+                response=result.get("response") or "I'm sorry, I'm having trouble processing your request right now.",
+                timestamp=datetime.fromisoformat(result["timestamp"]),
+                model=result.get("model", "local-fallback"),
+                success=False,
+            )
 
         return ChatResponse(
             response=result["response"],
@@ -110,7 +116,13 @@ async def chat_with_ai(
         )
 
     except Exception as e:
-        raise ProcessingError(f"Failed to process chat request: {str(e)}")
+        # Do not fail the request; return safe fallback
+        return ChatResponse(
+            response="I'm sorry, I'm having trouble processing your request right now. Please try again later.",
+            timestamp=datetime.utcnow(),
+            model="local-fallback",
+            success=False,
+        )
 
 
 @router.post("/me/chat", response_model=ChatResponse)
@@ -159,7 +171,12 @@ async def chat_with_ai_me(
             chat_history=chat_history
         )
         if not result["success"]:
-            raise ProcessingError(f"AI chat service error: {result.get('error', 'Unknown error')}")
+            return ChatResponse(
+                response=result.get("response") or "I'm sorry, I'm having trouble processing your request right now.",
+                timestamp=datetime.fromisoformat(result["timestamp"]),
+                model=result.get("model", "local-fallback"),
+                success=False,
+            )
 
         return ChatResponse(
             response=result["response"],
@@ -168,7 +185,12 @@ async def chat_with_ai_me(
             success=result["success"]
         )
     except Exception as e:
-        raise ProcessingError(f"Failed to process chat request: {str(e)}")
+        return ChatResponse(
+            response="I'm sorry, I'm having trouble processing your request right now. Please try again later.",
+            timestamp=datetime.utcnow(),
+            model="local-fallback",
+            success=False,
+        )
 
 
 @router.post("/{patient_id}/health-summary")
